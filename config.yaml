@@ -1,0 +1,6 @@
+listen: :8080
+
+stopatboot: false
+
+labels:
+  prefix: lazyloader
