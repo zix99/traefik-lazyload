@@ -34,7 +34,6 @@
             return response.status === {{.WaitForCode}};
         }
         setInterval(async () => {
-            console.log("testing...");
             if (await testForOk("{{.WaitForPath}}")) {
                 console.log("Found! Reloading...")
                 location.reload();

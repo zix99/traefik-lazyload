@@ -1,6 +1,6 @@
 # traefik-lazyloader
 
-Takes advantage of traefik's router priority to hit this small application that will manage
+Takes advantage of traefik's router priority to proxy to this small application that will manage
 starting/stopping containers to save resources.
 
 ## Quick-Start
@@ -9,8 +9,10 @@ starting/stopping containers to save resources.
 
 ## Labels
 
-* `lazyloader=true` -- Add to containers that should be managed
-* `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container (default: 5m)
+* `lazyloader=true` -- (Required) Add to containers that should be managed
+* `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container
+* `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user
+* `lazyloader.waitforpath=/`  -- Checks this path downstream to check for the process being ready, using the `waitforcode`
 
 # Features
 

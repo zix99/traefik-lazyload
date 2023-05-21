@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,10 +38,12 @@ var splashTemplate = template.Must(template.ParseFS(httpAssets, "assets/splash.h
 var dockerClient *client.Client
 
 type containerState struct {
-	Name, ID  string
-	IsRunning bool
-	LastWork  time.Time
-	StopDelay time.Duration
+	Name, ID    string
+	IsRunning   bool
+	LastWork    time.Time
+	StopDelay   time.Duration
+	WaitForCode int
+	WaitForPath string
 
 	lastRecv, lastSend int64 // Last network traffic, used to see if idle
 }
@@ -167,17 +170,6 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 
 	ct, _ := findContainerByHostname(r.Context(), host)
 	if ct != nil || true {
-		// TODO: Send response before querying anything about the container (the slow bit)
-		w.WriteHeader(http.StatusAccepted)
-		renderErr := splashTemplate.Execute(w, SplashModel{
-			Name:        host,
-			WaitForCode: 200, // TODO Config-based
-			WaitForPath: "/",
-		})
-		if renderErr != nil {
-			logrus.Error(renderErr)
-		}
-
 		// Look to start the container
 		state := getOrCreateState(ct.ID)
 		logrus.Infof("Found container %s for host %s, checking state...", containerShort(ct), host)
@@ -194,6 +186,16 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 			state.LastWork = time.Now()
 			parseContainerSettings(state, ct)
 		} // TODO: What if container crahsed but we think it's started?
+
+		w.WriteHeader(http.StatusAccepted)
+		renderErr := splashTemplate.Execute(w, SplashModel{
+			Name:        host,
+			WaitForCode: state.WaitForCode,
+			WaitForPath: state.WaitForPath,
+		})
+		if renderErr != nil {
+			logrus.Error(renderErr)
+		}
 	} else {
 		logrus.Warnf("Unable to find container for host %s", host)
 		w.WriteHeader(http.StatusNotFound)
@@ -212,14 +214,25 @@ func getOrCreateState(cid string) (ret *containerState) {
 
 func parseContainerSettings(target *containerState, ct *types.Container) {
 	{ // Parse stop delay
-		var stopErr error
 		stopDelay, _ := labelOrDefault(ct, "stopdelay", "10s")
-		target.StopDelay, stopErr = time.ParseDuration(stopDelay)
-		if stopErr != nil {
-			target.StopDelay = 30 * time.Second
+		if dur, stopErr := time.ParseDuration(stopDelay); stopErr != nil {
+			target.StopDelay = 30 * time.Second // TODO: Use config for default
 			logrus.Warnf("Unable to parse stopdelay of %s, defaulting to %s", stopDelay, target.StopDelay.String())
+		} else {
+			target.StopDelay = dur
 		}
 	}
+	{ // WaitForCode
+		codeStr, _ := labelOrDefault(ct, "waitforcode", "200")
+		if code, err := strconv.Atoi(codeStr); err != nil {
+			target.WaitForCode = 200
+			logrus.Warnf("Unable to parse WaitForCode of %s, defaulting to %d", target.Name, target.WaitForCode)
+		} else {
+			target.WaitForCode = code
+		}
+	}
+
+	target.WaitForPath, _ = labelOrDefault(ct, "waitforpath", "/")
 }
 
 func findContainerByHostname(ctx context.Context, hostname string) (*types.Container, error) {
