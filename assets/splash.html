@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="60">
+    <meta http-equiv="refresh" content="30">
     <link rel="stylesheet" type="text/css" href="/__llassets/splash.css">
     <title>Loading...</title>
 </head>
 <body>
     <div>
-        <h1>Booting Application</h1>
+        <h1>Loading {{.Name}}</h1>
     </div>
     <div class="container">
         <div class="circle" data-index="0"></div>
@@ -26,22 +26,20 @@
         <div class="circle" data-index="10"></div>
     </div>
     <script>
-        function main() {
-            async function testFor200(url) {
-                const response = await fetch(url, {
-                    method: "HEAD",
-                });
-                return response.status / 100 === 2; 
-            }
-            // TODO: Would self-detect as fine, but isn't ready
-            // setInterval(() => {
-            //     console.log("testing...");
-            //     if (testFor200("/")) {
-            //         location.reload();
-                    
-            //     }
-            // }, 1000);
+        async function testForOk(url) {
+            const response = await fetch(url, {
+                method: "HEAD",
+            });
+            console.log(`Got ${response.status}`);
+            return response.status === {{.WaitForCode}};
         }
+        setInterval(async () => {
+            console.log("testing...");
+            if (await testForOk("{{.WaitForPath}}")) {
+                console.log("Found! Reloading...")
+                location.reload();
+            }
+        }, 1000);
     </script>
 </body>
 </html>

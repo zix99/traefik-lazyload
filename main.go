@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"io/fs"
 	"net/http"
@@ -24,6 +25,14 @@ import (
 var httpAssets embed.FS
 
 const httpAssetPrefix = "/__llassets/"
+
+type SplashModel struct {
+	Name        string
+	WaitForCode int
+	WaitForPath string
+}
+
+var splashTemplate = template.Must(template.ParseFS(httpAssets, "assets/splash.html"))
 
 var dockerClient *client.Client
 
@@ -157,11 +166,17 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ct, _ := findContainerByHostname(r.Context(), host)
-	if ct != nil {
+	if ct != nil || true {
 		// TODO: Send response before querying anything about the container (the slow bit)
-		splash, _ := httpAssets.Open(path.Join("assets", Config.Splash))
 		w.WriteHeader(http.StatusAccepted)
-		io.Copy(w, splash)
+		renderErr := splashTemplate.Execute(w, SplashModel{
+			Name:        host,
+			WaitForCode: 200, // TODO Config-based
+			WaitForPath: "/",
+		})
+		if renderErr != nil {
+			logrus.Error(renderErr)
+		}
 
 		// Look to start the container
 		state := getOrCreateState(ct.ID)
