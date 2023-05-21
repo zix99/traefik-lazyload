@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ const httpAssetPrefix = "/__llassets/"
 var dockerClient *client.Client
 
 type containerState struct {
+	Name, ID  string
 	IsRunning bool
 	LastWork  time.Time
 	StopDelay time.Duration
@@ -35,9 +37,11 @@ type containerState struct {
 }
 
 // containerID -> State
-var containerStateCache map[string]*containerState = make(map[string]*containerState)
+var managedContainers = make(map[string]*containerState)
 
 func main() {
+
+	// Connect to docker
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		panic(err)
@@ -46,8 +50,22 @@ func main() {
 
 	dockerClient = cli
 
+	// Test
+	if info, err := cli.Info(context.Background()); err != nil {
+		logrus.Fatal(err)
+	} else {
+		logrus.Infof("Connected docker to %s", info.Name)
+	}
+
+	if splash, err := httpAssets.ReadFile(path.Join("assets", Config.Splash)); err != nil || len(splash) == 0 {
+		logrus.Fatal("Unable to open splash file %s", Config.Splash)
+	}
+
+	// Initial state
 	if Config.StopAtBoot {
 		stopAllLazyContainers()
+	} else {
+		//TODO: Inventory currently running containers
 	}
 
 	go watchForInactive()
@@ -60,22 +78,29 @@ func main() {
 	http.ListenAndServe(Config.Listen, nil)
 }
 
-func stopAllLazyContainers() {
+func stopAllLazyContainers() error {
 	filter := filters.NewArgs()
 	filter.Add("label", "lazyloader")
 
-	containers, _ := dockerClient.ContainerList(context.Background(), types.ContainerListOptions{Filters: filter, All: true})
+	containers, err := dockerClient.ContainerList(context.Background(), types.ContainerListOptions{Filters: filter, All: true})
+	if err != nil {
+		return err
+	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Minute)
 
 	for _, c := range containers {
 		logrus.Infof("Stopping %s: %s", c.ID[:8], c.Names[0])
-		dockerClient.ContainerStop(context.Background(), c.ID, container.StopOptions{})
+		dockerClient.ContainerStop(ctx, c.ID, container.StopOptions{})
 	}
+
+	return nil
 }
 
 func watchForInactive() {
 	// TODO: Thread safety
 	for {
-		for cid, ct := range containerStateCache {
+		for cid, ct := range managedContainers {
 			if !ct.IsRunning {
 				continue
 			}
@@ -109,12 +134,12 @@ func watchForInactive() {
 
 			// No network activity for a while, stop?
 			if time.Now().After(ct.LastWork.Add(ct.StopDelay)) {
-				logrus.Infof("Stopping idle container %s...", short(cid))
+				logrus.Infof("Stopping idle container %s...", ct.Name)
 				err := dockerClient.ContainerStop(context.Background(), cid, container.StopOptions{})
 				if err != nil {
 					logrus.Warnf("Error stopping container: %s", err)
 				} else {
-					delete(containerStateCache, cid)
+					delete(managedContainers, cid)
 				}
 			}
 		}
@@ -131,34 +156,29 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ct, _ := findContainerWithRoute(r.Context(), host) // TODO: Use cache rather than query
+	ct, _ := findContainerByHostname(r.Context(), host)
 	if ct != nil {
 		// TODO: Send response before querying anything about the container (the slow bit)
-		splash, _ := httpAssets.Open("assets/splash.html")
+		splash, _ := httpAssets.Open(path.Join("assets", Config.Splash))
+		w.WriteHeader(http.StatusAccepted)
 		io.Copy(w, splash)
 
+		// Look to start the container
+		state := getOrCreateState(ct.ID)
 		logrus.Infof("Found container %s for host %s, checking state...", containerShort(ct), host)
-		state := getOrCreateCache(ct.ID)
 
-		if !state.IsRunning {
-			details, _ := dockerClient.ContainerInspect(r.Context(), ct.ID)
-
-			if !details.State.Running {
-				logrus.Infof("Container %s not running, starting...", containerShort(ct))
-				dockerClient.ContainerStart(r.Context(), ct.ID, types.ContainerStartOptions{})
+		if !state.IsRunning { // cache doesn't think it's running
+			if ct.State != "running" {
+				logrus.Infof("Container %s not running (is %s), starting...", state.Name, ct.State)
+				go dockerClient.ContainerStart(context.Background(), ct.ID, types.ContainerStartOptions{}) // TODO: Check error
 			}
 
 			state.IsRunning = true
+			state.Name = containerShort(ct)
+			state.ID = ct.ID
 			state.LastWork = time.Now()
-
-			var stopErr error
-			stopDelay, _ := labelOrDefault(ct, "stopdelay", "10s")
-			state.StopDelay, stopErr = time.ParseDuration(stopDelay)
-			if stopErr != nil {
-				state.StopDelay = 30 * time.Second
-				logrus.Warnf("Unable to parse stopdelay of %s, defaulting to %s", stopDelay, state.StopDelay.String())
-			}
-		}
+			parseContainerSettings(state, ct)
+		} // TODO: What if container crahsed but we think it's started?
 	} else {
 		logrus.Warnf("Unable to find container for host %s", host)
 		w.WriteHeader(http.StatusNotFound)
@@ -166,16 +186,28 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getOrCreateCache(cid string) (ret *containerState) {
+func getOrCreateState(cid string) (ret *containerState) {
 	var ok bool
-	if ret, ok = containerStateCache[cid]; !ok {
+	if ret, ok = managedContainers[cid]; !ok {
 		ret = &containerState{}
-		containerStateCache[cid] = ret
+		managedContainers[cid] = ret
 	}
 	return
 }
 
-func findContainerWithRoute(ctx context.Context, route string) (*types.Container, error) {
+func parseContainerSettings(target *containerState, ct *types.Container) {
+	{ // Parse stop delay
+		var stopErr error
+		stopDelay, _ := labelOrDefault(ct, "stopdelay", "10s")
+		target.StopDelay, stopErr = time.ParseDuration(stopDelay)
+		if stopErr != nil {
+			target.StopDelay = 30 * time.Second
+			logrus.Warnf("Unable to parse stopdelay of %s, defaulting to %s", stopDelay, target.StopDelay.String())
+		}
+	}
+}
+
+func findContainerByHostname(ctx context.Context, hostname string) (*types.Container, error) {
 	containers, err := findAllLazyloadContainers(ctx, true)
 	if err != nil {
 		return nil, err
@@ -183,7 +215,7 @@ func findContainerWithRoute(ctx context.Context, route string) (*types.Container
 
 	for _, c := range containers {
 		for k, v := range c.Labels {
-			if strings.Contains(k, "traefik.http.routers.") && strings.Contains(v, route) { // TODO: More complex, and self-ignore
+			if strings.Contains(k, "traefik.http.routers.") && strings.Contains(v, hostname) { // TODO: More complex, and self-ignore
 				return &c, nil
 			}
 		}
@@ -192,6 +224,7 @@ func findContainerWithRoute(ctx context.Context, route string) (*types.Container
 	return nil, errors.New("not found")
 }
 
+// Finds all containers on node that are labeled with lazyloader config
 func findAllLazyloadContainers(ctx context.Context, includeStopped bool) ([]types.Container, error) {
 	filters := filters.NewArgs()
 	filters.Add("label", Config.Labels.Prefix)

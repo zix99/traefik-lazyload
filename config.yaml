@@ -1,6 +1,7 @@
 listen: :8080
 
 stopatboot: false
+splash: splash.html
 
 labels:
   prefix: lazyloader

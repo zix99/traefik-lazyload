@@ -12,6 +12,7 @@ import (
 type ConfigModel struct {
 	Listen     string // http listen
 	StopAtBoot bool   // Stop existing containers at start of app
+	Splash     string // Which splash page to serve
 
 	Labels struct {
 		Prefix string `mapstructure:"prefix"`
