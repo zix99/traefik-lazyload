@@ -3,5 +3,7 @@ listen: :8080
 stopatboot: false
 splash: splash.html
 
+stopdelay: 5m
+
 labels:
   prefix: lazyloader

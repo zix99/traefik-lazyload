@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -169,7 +168,7 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ct, _ := findContainerByHostname(r.Context(), host)
-	if ct != nil || true {
+	if ct != nil {
 		// Look to start the container
 		state := getOrCreateState(ct.ID)
 		logrus.Infof("Found container %s for host %s, checking state...", containerShort(ct), host)
@@ -214,9 +213,9 @@ func getOrCreateState(cid string) (ret *containerState) {
 
 func parseContainerSettings(target *containerState, ct *types.Container) {
 	{ // Parse stop delay
-		stopDelay, _ := labelOrDefault(ct, "stopdelay", "10s")
+		stopDelay, _ := labelOrDefault(ct, "stopdelay", Config.StopDelay.String())
 		if dur, stopErr := time.ParseDuration(stopDelay); stopErr != nil {
-			target.StopDelay = 30 * time.Second // TODO: Use config for default
+			target.StopDelay = Config.StopDelay
 			logrus.Warnf("Unable to parse stopdelay of %s, defaulting to %s", stopDelay, target.StopDelay.String())
 		} else {
 			target.StopDelay = dur

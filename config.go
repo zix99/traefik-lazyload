@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -13,6 +14,8 @@ type ConfigModel struct {
 	Listen     string // http listen
 	StopAtBoot bool   // Stop existing containers at start of app
 	Splash     string // Which splash page to serve
+
+	StopDelay time.Duration // Amount of time to wait before stopping a container
 
 	Labels struct {
 		Prefix string `mapstructure:"prefix"`
