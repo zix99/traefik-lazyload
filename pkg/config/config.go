@@ -1,10 +1,11 @@
-package main
+package config
 
 import (
 	_ "embed"
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
 
@@ -22,7 +23,7 @@ type ConfigModel struct {
 	} `mapstructure:"labels"`
 }
 
-var Config *ConfigModel = new(ConfigModel)
+var Model *ConfigModel = new(ConfigModel)
 
 func init() {
 	viper.AddConfigPath(".")
@@ -34,14 +35,14 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		panic(err)
+		logrus.Fatal(err)
 	}
 
-	if err := viper.Unmarshal(Config); err != nil {
-		panic(err)
+	if err := viper.Unmarshal(Model); err != nil {
+		logrus.Fatal(err)
 	}
 }
 
-func subLabel(name string) string {
-	return Config.Labels.Prefix + "." + name
+func SubLabel(name string) string {
+	return Model.Labels.Prefix + "." + name
 }

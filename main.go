@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"traefik-lazyload/pkg/config"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -32,7 +33,7 @@ type SplashModel struct {
 	WaitForPath string
 }
 
-var splashTemplate = template.Must(template.ParseFS(httpAssets, "assets/splash.html"))
+var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("assets", config.Model.Splash)))
 
 var dockerClient *client.Client
 
@@ -68,12 +69,12 @@ func main() {
 		logrus.Infof("Connected docker to %s", info.Name)
 	}
 
-	if splash, err := httpAssets.ReadFile(path.Join("assets", Config.Splash)); err != nil || len(splash) == 0 {
-		logrus.Fatal("Unable to open splash file %s", Config.Splash)
+	if splash, err := httpAssets.ReadFile(path.Join("assets", config.Model.Splash)); err != nil || len(splash) == 0 {
+		logrus.Fatal("Unable to open splash file %s", config.Model.Splash)
 	}
 
 	// Initial state
-	if Config.StopAtBoot {
+	if config.Model.StopAtBoot {
 		stopAllLazyContainers()
 	} else {
 		//TODO: Inventory currently running containers
@@ -85,8 +86,8 @@ func main() {
 	http.Handle(httpAssetPrefix, http.StripPrefix(httpAssetPrefix, http.FileServer(http.FS(subFs))))
 	http.HandleFunc("/", ContainerHandler)
 
-	logrus.Infof("Listening on %s...", Config.Listen)
-	http.ListenAndServe(Config.Listen, nil)
+	logrus.Infof("Listening on %s...", config.Model.Listen)
+	http.ListenAndServe(config.Model.Listen, nil)
 }
 
 func stopAllLazyContainers() error {
@@ -213,9 +214,9 @@ func getOrCreateState(cid string) (ret *containerState) {
 
 func parseContainerSettings(target *containerState, ct *types.Container) {
 	{ // Parse stop delay
-		stopDelay, _ := labelOrDefault(ct, "stopdelay", Config.StopDelay.String())
+		stopDelay, _ := labelOrDefault(ct, "stopdelay", config.Model.StopDelay.String())
 		if dur, stopErr := time.ParseDuration(stopDelay); stopErr != nil {
-			target.StopDelay = Config.StopDelay
+			target.StopDelay = config.Model.StopDelay
 			logrus.Warnf("Unable to parse stopdelay of %s, defaulting to %s", stopDelay, target.StopDelay.String())
 		} else {
 			target.StopDelay = dur
@@ -254,7 +255,7 @@ func findContainerByHostname(ctx context.Context, hostname string) (*types.Conta
 // Finds all containers on node that are labeled with lazyloader config
 func findAllLazyloadContainers(ctx context.Context, includeStopped bool) ([]types.Container, error) {
 	filters := filters.NewArgs()
-	filters.Add("label", Config.Labels.Prefix)
+	filters.Add("label", config.Model.Labels.Prefix)
 
 	return dockerClient.ContainerList(ctx, types.ContainerListOptions{
 		All:     includeStopped,

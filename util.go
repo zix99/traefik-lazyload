@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"traefik-lazyload/pkg/config"
 
 	"github.com/docker/docker/api/types"
 )
@@ -15,7 +16,7 @@ func sumNetworkBytes(networks map[string]types.NetworkStats) (recv int64, send i
 }
 
 func labelOrDefault(ct *types.Container, sublabel, dflt string) (string, bool) {
-	if val, ok := ct.Labels[subLabel(sublabel)]; ok {
+	if val, ok := ct.Labels[config.SubLabel(sublabel)]; ok {
 		return val, true
 	}
 	return dflt, false
