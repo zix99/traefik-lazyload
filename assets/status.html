@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="30">
+    <title>Status</title>
+</head>
+<body>
+    <h1>Lazyloader Status</h1>
+    <h2>Active Containers</h2>
+    <p>This are containers the lazyloader knows about and considers "active"</p>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Last Active</th>
+            <th>Rx</th>
+            <th>Tx</th>
+            <th>Stop Delay</th>
+        </tr>
+        {{range $val := .Active}}
+        <tr>
+            <td>{{$val.Name}}</td>
+            <td>{{$val.LastActive.Format "2006-01-02 15:04:05"}}</td>
+            <td>{{$val.Rx}}</td>
+            <td>{{$val.Tx}}</td>
+            <td>{{$val.StopDelay}}</td>
+        </tr>
+        {{end}}
+    </table>
+
+    <h2>Qualifying Containers</h2>
+    <p>These are all containers that qualify to be lazy-loader managed</p>
+    <ul>
+        {{range $val := .Qualifying}}
+            <li>{{.}}</li>
+        {{end}}
+    </ul>
+
+    <h2>Runtime</h2>
+    <p>{{.RuntimeMetrics}}</p>
+</body>
+</html>

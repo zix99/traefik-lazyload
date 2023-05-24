@@ -2,9 +2,11 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"runtime"
 	"traefik-lazyload/pkg/config"
 	"traefik-lazyload/pkg/service"
 
@@ -84,7 +86,13 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 func StatusHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
-		io.WriteString(w, "Status page")
+		var stats runtime.MemStats
+		runtime.ReadMemStats(&stats)
+		statusPageTemplate.Execute(w, StatusPageModel{
+			Active:         core.ActiveContainers(),
+			Qualifying:     core.QualifyingContainers(),
+			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),
+		})
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		io.WriteString(w, "Status page not found")

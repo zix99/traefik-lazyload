@@ -4,7 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
+	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,26 +18,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type containerSettings struct {
-	stopDelay   time.Duration
-	waitForCode int
-	waitForPath string
-}
-
-type containerState struct {
-	Name string
-	containerSettings
-	lastRecv, lastSend int64 // Last network traffic, used to see if idle
-	lastActivity       time.Time
-}
-
 type Core struct {
 	mux  sync.Mutex
 	term chan bool
 
 	client *client.Client
 
-	active map[string]*containerState // cid -> state
+	active map[string]*ContainerState // cid -> state
 }
 
 func New(client *client.Client, pollRate time.Duration) (*Core, error) {
@@ -50,7 +38,7 @@ func New(client *client.Client, pollRate time.Duration) (*Core, error) {
 	// Make core
 	ret := &Core{
 		client: client,
-		active: make(map[string]*containerState),
+		active: make(map[string]*ContainerState),
 		term:   make(chan bool),
 	}
 
@@ -87,7 +75,7 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 
 	if ets, exists := s.active[ct.ID]; exists {
 		// TODO: Handle case we think it's active, but not? (eg. crash? slow boot?)
-		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.Name)
+		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.name)
 		return &StartResult{
 			WaitForCode: ets.waitForCode,
 			WaitForPath: ets.waitForPath,
@@ -162,7 +150,7 @@ func (s *Core) checkForNewContainers(ctx context.Context) {
 	// check for containers we think are running, but aren't (destroyed, error'd, stop'd via another process, etc)
 	for cid, cts := range s.active {
 		if _, ok := runningContainers[cid]; !ok {
-			logrus.Infof("Discover container had stopped, removing %s", cts.Name)
+			logrus.Infof("Discover container had stopped, removing %s", cts.name)
 			delete(s.active, cid)
 		}
 	}
@@ -180,20 +168,20 @@ func (s *Core) watchForInactivity(ctx context.Context) {
 	for cid, cts := range s.active {
 		shouldStop, err := s.checkContainerForInactivity(ctx, cid, cts)
 		if err != nil {
-			logrus.Warnf("error checking container state for %s: %s", cts.Name, err)
+			logrus.Warnf("error checking container state for %s: %s", cts.name, err)
 		}
 		if shouldStop {
 			if err := s.client.ContainerStop(ctx, cid, container.StopOptions{}); err != nil {
-				logrus.Errorf("Error stopping container %s: %s", cts.Name, err)
+				logrus.Errorf("Error stopping container %s: %s", cts.name, err)
 			} else {
-				logrus.Infof("Stopped container %s", cts.Name)
+				logrus.Infof("Stopped container %s", cts.name)
 				delete(s.active, cid)
 			}
 		}
 	}
 }
 
-func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *containerState) (shouldStop bool, retErr error) {
+func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *ContainerState) (shouldStop bool, retErr error) {
 	statsStream, err := s.client.ContainerStatsOneShot(ctx, cid)
 	if err != nil {
 		return false, err
@@ -220,43 +208,11 @@ func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *
 
 	// No activity, stop?
 	if time.Now().After(ct.lastActivity.Add(ct.stopDelay)) {
-		logrus.Infof("Found idle container %s...", ct.Name)
+		logrus.Infof("Found idle container %s...", ct.name)
 		return true, nil
 	}
 
 	return false, nil
-}
-
-func newStateFromContainer(ct *types.Container) *containerState {
-	return &containerState{
-		Name:              containerShort(ct),
-		containerSettings: extractContainerLabels(ct),
-		lastActivity:      time.Now(),
-	}
-}
-
-func extractContainerLabels(ct *types.Container) (target containerSettings) {
-	{ // Parse stop delay
-		stopDelay, _ := labelOrDefault(ct, "stopdelay", config.Model.StopDelay.String())
-		if dur, stopErr := time.ParseDuration(stopDelay); stopErr != nil {
-			target.stopDelay = config.Model.StopDelay
-			logrus.Warnf("Unable to parse stopdelay for %s of %s, defaulting to %s", containerShort(ct), stopDelay, target.stopDelay.String())
-		} else {
-			target.stopDelay = dur
-		}
-	}
-	{ // WaitForCode
-		codeStr, _ := labelOrDefault(ct, "waitforcode", "200")
-		if code, err := strconv.Atoi(codeStr); err != nil {
-			target.waitForCode = 200
-			logrus.Warnf("Unable to parse WaitForCode of %s, defaulting to %d", containerShort(ct), target.waitForCode)
-		} else {
-			target.waitForCode = code
-		}
-	}
-
-	target.waitForPath, _ = labelOrDefault(ct, "waitforpath", "/")
-	return
 }
 
 func (s *Core) findContainerByHostname(ctx context.Context, hostname string) (*types.Container, error) {
@@ -293,4 +249,32 @@ func (s *Core) findAllLazyloadContainers(ctx context.Context, includeStopped boo
 		All:     includeStopped,
 		Filters: filters,
 	})
+}
+
+func (s *Core) ActiveContainers() []*ContainerState {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	ret := make([]*ContainerState, 0, len(s.active))
+	for _, item := range s.active {
+		ret = append(ret, item)
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].name < ret[j].name
+	})
+	return ret
+}
+
+func (s *Core) QualifyingContainers() []string {
+	ct, err := s.findAllLazyloadContainers(context.Background(), true)
+	if err != nil {
+		return nil
+	}
+
+	ret := make([]string, len(ct))
+	for i, c := range ct {
+		ret[i] = fmt.Sprintf("%s - %s", containerShort(&c), c.State)
+	}
+	sort.Strings(ret)
+	return ret
 }
