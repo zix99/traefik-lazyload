@@ -138,7 +138,8 @@ func (s *Core) Poll() {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	s.checkForNewContainers(ctx)
 	s.watchForInactivity(ctx)
