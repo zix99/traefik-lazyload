@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
 	"fmt"
@@ -38,4 +38,17 @@ func containerShort(c *types.Container) string {
 		name = c.Image
 	}
 	return fmt.Sprintf("%s(%s)", name, short(c.ID))
+}
+
+func isRunning(c *types.Container) bool {
+	return c.State == "running"
+}
+
+func strSliceContains(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

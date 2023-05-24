@@ -15,8 +15,12 @@ type ConfigModel struct {
 	Listen     string // http listen
 	StopAtBoot bool   // Stop existing containers at start of app
 	Splash     string // Which splash page to serve
+	StatusHost string // Host that will serve the status page (empty is disabled)
 
 	StopDelay time.Duration // Amount of time to wait before stopping a container
+	PollFreq  time.Duration // How often to check for changes
+
+	Verbose bool // Debug-level logging
 
 	Labels struct {
 		Prefix string `mapstructure:"prefix"`

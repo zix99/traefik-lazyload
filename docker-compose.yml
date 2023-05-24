@@ -23,9 +23,10 @@ services:
     labels:
       - traefik.enable=true
       - "traefik.http.routers.lazyload.priority=-100"
-      - "traefik.http.routers.lazyload.rule=Host(`whoami.d.lan`, `whoami2.d.lan`, `pdf.d.lan`)"
+      - "traefik.http.routers.lazyload.rule=Host(`whoami.d.lan`, `whoami2.d.lan`, `pdf.d.lan`, `noexist.d.lan`, `lazyloader.d.lan`)"
     environment:
       TLL_STOPATBOOT: true
+      TLL_STATUSHOST: lazyloader.d.lan
     networks:
       - traefik-bridge
     volumes:

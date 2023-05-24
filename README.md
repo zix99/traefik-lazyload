@@ -13,6 +13,7 @@ starting/stopping containers to save resources.
 * `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container
 * `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user
 * `lazyloader.waitforpath=/`  -- Checks this path downstream to check for the process being ready, using the `waitforcode`
+* `lazyloader.hosts=a.com,b.net,etc` -- Set specific hostnames that will trigger. By default, will look for traefik router
 
 # Features
 
