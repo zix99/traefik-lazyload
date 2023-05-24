@@ -22,9 +22,7 @@ type ConfigModel struct {
 
 	Verbose bool // Debug-level logging
 
-	Labels struct {
-		Prefix string `mapstructure:"prefix"`
-	} `mapstructure:"labels"`
+	LabelPrefix string
 }
 
 var Model *ConfigModel = new(ConfigModel)
@@ -48,5 +46,5 @@ func init() {
 }
 
 func SubLabel(name string) string {
-	return Model.Labels.Prefix + "." + name
+	return Model.LabelPrefix + "." + name
 }

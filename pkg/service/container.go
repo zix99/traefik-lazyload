@@ -62,6 +62,10 @@ func (s *ContainerState) LastActive() time.Time {
 	return s.lastActivity
 }
 
+func (s *ContainerState) LastActiveAge() string {
+	return time.Since(s.lastActivity).Round(time.Second).String()
+}
+
 func (s *ContainerState) Rx() int64 {
 	return s.lastRecv
 }

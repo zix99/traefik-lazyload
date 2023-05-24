@@ -8,5 +8,4 @@ pollfreq: 10s
 statushost: ""
 verbose: false
 
-labels:
-  prefix: lazyloader
+labelprefix: lazyloader

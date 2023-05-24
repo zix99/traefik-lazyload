@@ -257,7 +257,7 @@ func (s *Core) findContainerByHostname(ctx context.Context, hostname string) (*t
 // Finds all containers on node that are labeled with lazyloader config
 func (s *Core) findAllLazyloadContainers(ctx context.Context, includeStopped bool) ([]types.Container, error) {
 	filters := filters.NewArgs()
-	filters.Add("label", config.Model.Labels.Prefix)
+	filters.Add("label", config.Model.LabelPrefix)
 
 	return s.client.ContainerList(ctx, types.ContainerListOptions{
 		All:     includeStopped,

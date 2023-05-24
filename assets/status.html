@@ -15,17 +15,17 @@
         <tr>
             <th>Name</th>
             <th>Last Active</th>
+            <th>Stop Delay</th>
             <th>Rx</th>
             <th>Tx</th>
-            <th>Stop Delay</th>
         </tr>
         {{range $val := .Active}}
         <tr>
             <td>{{$val.Name}}</td>
-            <td>{{$val.LastActive.Format "2006-01-02 15:04:05"}}</td>
+            <td>{{$val.LastActiveAge}}</td>
+            <td>{{$val.StopDelay}}</td>
             <td>{{$val.Rx}}</td>
             <td>{{$val.Tx}}</td>
-            <td>{{$val.StopDelay}}</td>
         </tr>
         {{end}}
     </table>
