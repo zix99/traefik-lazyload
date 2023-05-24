@@ -38,6 +38,10 @@ func main() {
 	}
 	defer core.Close()
 
+	if config.Model.StopAtBoot {
+		core.StopAll()
+	}
+
 	// Set up http server
 	subFs, _ := fs.Sub(httpAssets, "assets")
 	http.Handle(httpAssetPrefix, http.StripPrefix(httpAssetPrefix, http.FileServer(http.FS(subFs))))

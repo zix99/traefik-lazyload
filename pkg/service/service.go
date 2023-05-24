@@ -94,6 +94,20 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 	}, nil
 }
 
+func (s *Core) StopAll() {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
+	ctx := context.Background()
+
+	logrus.Info("Stopping all containers...")
+	for cid, ct := range s.active {
+		logrus.Infof("Stopping %s...", ct.name)
+		s.client.ContainerStop(ctx, cid, container.StopOptions{})
+		delete(s.active, cid)
+	}
+}
+
 func (s *Core) startContainer(ctx context.Context, ct *types.Container) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
