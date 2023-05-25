@@ -74,7 +74,6 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 	}
 
 	if ets, exists := s.active[ct.ID]; exists {
-		// TODO: Handle case we think it's active, but not? (eg. crash? slow boot?)
 		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.name)
 		return &StartResult{
 			WaitForCode: ets.waitForCode,
@@ -265,6 +264,7 @@ func (s *Core) findAllLazyloadContainers(ctx context.Context, includeStopped boo
 	})
 }
 
+// Returns all actively managed containers
 func (s *Core) ActiveContainers() []*ContainerState {
 	s.mux.Lock()
 	defer s.mux.Unlock()
@@ -279,8 +279,9 @@ func (s *Core) ActiveContainers() []*ContainerState {
 	return ret
 }
 
-func (s *Core) QualifyingContainers() []string {
-	ct, err := s.findAllLazyloadContainers(context.Background(), true)
+// Return all containers that qualify to be load-managed (eg. have the tag)
+func (s *Core) QualifyingContainers(ctx context.Context) []string {
+	ct, err := s.findAllLazyloadContainers(ctx, true)
 	if err != nil {
 		return nil
 	}

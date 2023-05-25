@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"traefik-lazyload/pkg/config"
 
 	"github.com/docker/docker/api/types"
@@ -22,7 +23,7 @@ func labelOrDefault(ct *types.Container, sublabel, dflt string) (string, bool) {
 	return dflt, false
 }
 
-func short(id string) string {
+func shortId(id string) string {
 	const SLEN = 8
 	if len(id) <= SLEN {
 		return id
@@ -33,11 +34,18 @@ func short(id string) string {
 func containerShort(c *types.Container) string {
 	var name string
 	if len(c.Names) > 0 {
-		name = c.Names[0]
+		name = trimRootPath(c.Names[0])
 	} else {
 		name = c.Image
 	}
-	return fmt.Sprintf("%s(%s)", name, short(c.ID))
+	return fmt.Sprintf("%s(%s)", name, shortId(c.ID))
+}
+
+func trimRootPath(s string) string {
+	if strings.HasPrefix(s, "/") {
+		return s[1:]
+	}
+	return s
 }
 
 func isRunning(c *types.Container) bool {

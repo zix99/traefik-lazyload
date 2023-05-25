@@ -94,7 +94,7 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 		runtime.ReadMemStats(&stats)
 		statusPageTemplate.Execute(w, StatusPageModel{
 			Active:         core.ActiveContainers(),
-			Qualifying:     core.QualifyingContainers(),
+			Qualifying:     core.QualifyingContainers(r.Context()),
 			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),
 		})
 	default:

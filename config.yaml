@@ -1,11 +1,22 @@
+# What port to listen on
 listen: :8080
 
-stopatboot: false
-splash: splash.html
-
-stopdelay: 5m
-pollfreq: 10s
+# If set, when access via this hostname, will display status page
 statushost: ""
+
+# Enable debug logging
 verbose: false
 
+# if true, will stop all running tagged containers when the lazyloader starts
+stopatboot: false
+
+# which splash-page asset to use
+splash: splash.html
+
+# Container defaults
+stopdelay: 5m # How long to wait before stopping container
+pollfreq: 10s # How often to check
+
+# This will be the label-prefix to look at settings on a container
+# usually won't need to change (only if running multiple instances)
 labelprefix: lazyloader
