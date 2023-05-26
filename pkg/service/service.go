@@ -56,8 +56,9 @@ func (s *Core) Close() error {
 }
 
 type StartResult struct {
-	WaitForCode int
-	WaitForPath string
+	WaitForCode   int
+	WaitForPath   string
+	ContainerName string
 }
 
 func (s *Core) StartHost(hostname string) (*StartResult, error) {
@@ -75,8 +76,9 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 	if ets, exists := s.active[ct.ID]; exists {
 		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.name)
 		return &StartResult{
-			WaitForCode: ets.waitForCode,
-			WaitForPath: ets.waitForPath,
+			WaitForCode:   ets.waitForCode,
+			WaitForPath:   ets.waitForPath,
+			ContainerName: containerShort(ct),
 		}, nil
 	}
 

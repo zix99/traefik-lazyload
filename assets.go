@@ -15,6 +15,7 @@ const httpAssetPrefix = "/__llassets/"
 
 type SplashModel struct {
 	Name        string
+	CID         string
 	WaitForCode int
 	WaitForPath string
 }

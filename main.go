@@ -78,6 +78,7 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		renderErr := splashTemplate.Execute(w, SplashModel{
 			Name:        host,
+			CID:         sOpts.ContainerName,
 			WaitForCode: sOpts.WaitForCode,
 			WaitForPath: sOpts.WaitForPath,
 		})

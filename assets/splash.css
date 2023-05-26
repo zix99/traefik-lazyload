@@ -70,10 +70,13 @@ body {
 
 .message {
   margin: 16px;
-  font-size: 1.6em;
-  font-weight: bold;
   color: #333;
   text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.message h1,h2,h3 {
+  margin: 8px;
 }
 
 .square {
