@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"strings"
-	"traefik-lazyload/pkg/config"
 
 	"github.com/docker/docker/api/types"
 )
@@ -14,13 +13,6 @@ func sumNetworkBytes(networks map[string]types.NetworkStats) (recv int64, send i
 		send += int64(ns.TxBytes)
 	}
 	return
-}
-
-func labelOrDefault(ct *types.Container, sublabel, dflt string) (string, bool) {
-	if val, ok := ct.Labels[config.SubLabel(sublabel)]; ok {
-		return val, true
-	}
-	return dflt, false
 }
 
 func shortId(id string) string {
@@ -42,10 +34,7 @@ func containerShort(c *types.Container) string {
 }
 
 func trimRootPath(s string) string {
-	if strings.HasPrefix(s, "/") {
-		return s[1:]
-	}
-	return s
+	return strings.TrimPrefix(s, "/")
 }
 
 func isRunning(c *types.Container) bool {

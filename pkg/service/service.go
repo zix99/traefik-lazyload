@@ -55,13 +55,7 @@ func (s *Core) Close() error {
 	return s.client.Close()
 }
 
-type StartResult struct {
-	WaitForCode   int
-	WaitForPath   string
-	ContainerName string
-}
-
-func (s *Core) StartHost(hostname string) (*StartResult, error) {
+func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
@@ -75,11 +69,7 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 
 	if ets, exists := s.active[ct.ID]; exists {
 		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.name)
-		return &StartResult{
-			WaitForCode:   ets.waitForCode,
-			WaitForPath:   ets.waitForPath,
-			ContainerName: containerShort(ct),
-		}, nil
+		return ets, nil
 	}
 
 	go s.startContainer(ctx, ct)
@@ -88,10 +78,7 @@ func (s *Core) StartHost(hostname string) (*StartResult, error) {
 	ets := newStateFromContainer(ct)
 	s.active[ct.ID] = ets
 
-	return &StartResult{
-		WaitForCode: ets.waitForCode,
-		WaitForPath: ets.waitForPath,
-	}, nil
+	return ets, nil
 }
 
 func (s *Core) StopAll() {
@@ -227,6 +214,15 @@ func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *
 	}
 
 	return false, nil
+}
+
+func (s *Core) findContainersByDepProvider(ctx context.Context, name string) ([]types.Container, error) {
+	filters := filters.NewArgs()
+	filters.Add("label", config.SubLabel("providers")+"="+name)
+	return s.client.ContainerList(ctx, types.ContainerListOptions{
+		Filters: filters,
+		All:     true,
+	})
 }
 
 func (s *Core) findContainerByHostname(ctx context.Context, hostname string) (*types.Container, error) {

@@ -23,13 +23,13 @@
         </div>
         <div class="message">
             <h2>Starting {{.Name}}</h2>
-            <h3>{{.CID}}</h3>
+            <h3>{{.Name}}</h3>
         </div>
     </div>
     <script>
         async function testForOk(url) {
             const response = await fetch(url, {
-                method: "HEAD",
+                method: "{{.WaitForMethod}}",
             });
             console.log(`Got ${response.status}`);
             return response.status === {{.WaitForCode}};

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
+	"os/signal"
 	"runtime"
 	"traefik-lazyload/pkg/config"
 	"traefik-lazyload/pkg/service"
@@ -44,14 +47,31 @@ func main() {
 
 	// Set up http server
 	subFs, _ := fs.Sub(httpAssets, "assets")
-	http.Handle(httpAssetPrefix, http.StripPrefix(httpAssetPrefix, http.FileServer(http.FS(subFs))))
-	http.HandleFunc("/", ContainerHandler)
+	router := http.NewServeMux()
+	router.Handle(httpAssetPrefix, http.StripPrefix(httpAssetPrefix, http.FileServer(http.FS(subFs))))
+	router.HandleFunc("/", ContainerHandler)
+
+	srv := &http.Server{
+		Addr:    config.Model.Listen,
+		Handler: router,
+	}
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt)
+
+	go func() {
+		<-sigChan
+		logrus.Info("Shutting down...")
+		srv.Shutdown(context.Background())
+	}()
 
 	logrus.Infof("Listening on %s...", config.Model.Listen)
 	if config.Model.StatusHost != "" {
 		logrus.Infof("Status host set to %s", config.Model.StatusHost)
 	}
-	http.ListenAndServe(config.Model.Listen, nil)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logrus.Fatal(err)
+	}
 }
 
 func ContainerHandler(w http.ResponseWriter, r *http.Request) {
@@ -77,10 +97,8 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusAccepted)
 		renderErr := splashTemplate.Execute(w, SplashModel{
-			Name:        host,
-			CID:         sOpts.ContainerName,
-			WaitForCode: sOpts.WaitForCode,
-			WaitForPath: sOpts.WaitForPath,
+			Name:           host,
+			ContainerState: sOpts,
 		})
 		if renderErr != nil {
 			logrus.Error(renderErr)

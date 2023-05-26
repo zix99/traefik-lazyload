@@ -1,5 +1,5 @@
 README.md
-docker-compose.yml
+*compose.yml
 Dockerfile
 .gitignore
 traefik-lazyload

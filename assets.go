@@ -14,10 +14,8 @@ var httpAssets embed.FS
 const httpAssetPrefix = "/__llassets/"
 
 type SplashModel struct {
-	Name        string
-	CID         string
-	WaitForCode int
-	WaitForPath string
+	*service.ContainerState
+	Name string
 }
 
 var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("assets", config.Model.Splash)))
