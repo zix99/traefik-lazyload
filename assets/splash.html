@@ -9,21 +9,21 @@
     <title>Loading...</title>
 </head>
 <body>
-    <div>
-        <h1>Loading {{.Name}}</h1>
-    </div>
-    <div class="container">
-        <div class="circle" data-index="0"></div>
-        <div class="circle" data-index="1"></div>
-        <div class="circle" data-index="2"></div>
-        <div class="circle" data-index="3"></div>
-        <div class="circle" data-index="4"></div>
-        <div class="circle" data-index="5"></div>
-        <div class="circle" data-index="6"></div>
-        <div class="circle" data-index="7"></div>
-        <div class="circle" data-index="8"></div>
-        <div class="circle" data-index="9"></div>
-        <div class="circle" data-index="10"></div>
+    <div class="outer">
+        <div class="loader">
+            <div class="square" ></div>
+            <div class="square"></div>
+            <div class="square last"></div>
+            <div class="square clear"></div>
+            <div class="square"></div>
+            <div class="square last"></div>
+            <div class="square clear"></div>
+            <div class="square "></div>
+            <div class="square last"></div>
+        </div>
+        <div class="message">
+            Starting {{.Name}}
+        </div>
     </div>
     <script>
         async function testForOk(url) {

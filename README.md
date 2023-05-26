@@ -21,6 +21,7 @@ will stop the container.
 version: '3.5'
 
 services:
+  # Example traefik proxy
   reverse-proxy:
     image: traefik:v2.4
     command:
@@ -37,6 +38,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # So that Traefik can listen to the Docker events
 
+  # Lazy-loader manager
   lazyloader:
     build: .
     labels:
