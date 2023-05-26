@@ -2,6 +2,7 @@ package service
 
 import (
 	"strconv"
+	"strings"
 	"time"
 	"traefik-lazyload/pkg/config"
 
@@ -20,6 +21,7 @@ type ContainerState struct {
 	containerSettings
 	lastRecv, lastSend int64 // Last network traffic, used to see if idle
 	lastActivity       time.Time
+	started            time.Time
 }
 
 func newStateFromContainer(ct *types.Container) *ContainerState {
@@ -27,6 +29,7 @@ func newStateFromContainer(ct *types.Container) *ContainerState {
 		name:              containerShort(ct),
 		containerSettings: extractContainerLabels(ct),
 		lastActivity:      time.Now(),
+		started:           time.Now(),
 	}
 }
 
@@ -74,6 +77,30 @@ func (s *ContainerState) Tx() int64 {
 	return s.lastSend
 }
 
+func (s *ContainerState) Started() time.Time {
+	return s.started
+}
+
 func (s *containerSettings) StopDelay() string {
 	return s.stopDelay.String()
+}
+
+type ContainerWrapper struct {
+	types.Container
+}
+
+func (s *ContainerWrapper) NameID() string {
+	return containerShort(&s.Container)
+}
+
+func (s *ContainerWrapper) ConfigLabels() map[string]string {
+	var matchString = config.Model.LabelPrefix + "."
+
+	ret := make(map[string]string)
+	for k, v := range s.Labels {
+		if strings.HasPrefix(k, matchString) {
+			ret[k[len(matchString):]] = v
+		}
+	}
+	return ret
 }

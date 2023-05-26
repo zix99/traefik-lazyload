@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -280,16 +279,18 @@ func (s *Core) ActiveContainers() []*ContainerState {
 }
 
 // Return all containers that qualify to be load-managed (eg. have the tag)
-func (s *Core) QualifyingContainers(ctx context.Context) []string {
+func (s *Core) QualifyingContainers(ctx context.Context) []ContainerWrapper {
 	ct, err := s.findAllLazyloadContainers(ctx, true)
 	if err != nil {
 		return nil
 	}
 
-	ret := make([]string, len(ct))
+	ret := make([]ContainerWrapper, len(ct))
 	for i, c := range ct {
-		ret[i] = fmt.Sprintf("%s - %s", containerShort(&c), c.State)
+		ret[i] = ContainerWrapper{c}
 	}
-	sort.Strings(ret)
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].NameID() < ret[j].NameID()
+	})
 	return ret
 }

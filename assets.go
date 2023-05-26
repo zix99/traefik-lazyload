@@ -23,7 +23,7 @@ var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("asset
 
 type StatusPageModel struct {
 	Active         []*service.ContainerState
-	Qualifying     []string
+	Qualifying     []service.ContainerWrapper
 	RuntimeMetrics string
 }
 

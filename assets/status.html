@@ -14,6 +14,7 @@
     <table>
         <tr>
             <th>Name</th>
+            <th>Started</th>
             <th>Last Active</th>
             <th>Stop Delay</th>
             <th>Rx</th>
@@ -22,6 +23,7 @@
         {{range $val := .Active}}
         <tr>
             <td>{{$val.Name}}</td>
+            <td>{{$val.Started.Format "2006-01-02 15:04:05"}}</td>
             <td>{{$val.LastActiveAge}}</td>
             <td>{{$val.StopDelay}}</td>
             <td>{{$val.Rx}}</td>
@@ -32,11 +34,26 @@
 
     <h2>Qualifying Containers</h2>
     <p>These are all containers that qualify to be lazy-loader managed</p>
-    <ul>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>State</th>
+            <th>Status</th>
+            <th>Config</th>
+        </tr>
         {{range $val := .Qualifying}}
-            <li>{{.}}</li>
+            <tr>
+                <td>{{$val.NameID}}</td>
+                <td>{{$val.State}}</td>
+                <td><em>{{$val.Status}}</em></td>
+                <td>
+                    {{range $label, $lval := $val.ConfigLabels}}
+                        <span><strong>{{$label}}</strong>={{$lval}}</span> 
+                    {{end}}
+                </td>
+            </tr>
         {{end}}
-    </ul>
+    </table>
 
     <h2>Runtime</h2>
     <p>{{.RuntimeMetrics}}</p>
