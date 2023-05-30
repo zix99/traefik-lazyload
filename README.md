@@ -109,6 +109,11 @@ labelprefix: lazyloader
 * `lazyloader.waitforpath=/`  -- Checks this path downstream to check for the process being ready, using the `waitforcode`
 * `lazyloader.hosts=a.com,b.net,etc` -- Set specific hostnames that will trigger. By default, will look for traefik router
 
+### Dependencies
+* `lazyloader.needs=a,b,c` -- List of dependencies a container needs (will be started before starting the container)
+* `lazyloader.provides=a` -- What dependency name a container provides (Not necessarily a `lazyloader` container)
+* `lazyloader.provides.delay=5s` -- Delay starting other containers for this duration
+
 # Features
 
 - [ ] Dependencies & groups (eg. shut down DB if all dependent apps are down)
