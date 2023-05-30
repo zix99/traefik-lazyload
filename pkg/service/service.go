@@ -72,15 +72,27 @@ func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 		return ets, nil
 	}
 
-	go s.startContainer(ctx, ct)
-
 	// add to active pool
+	logrus.Infof("Starting container for %s...", hostname)
 	ets := newStateFromContainer(ct)
 	s.active[ct.ID] = ets
+	ets.pinned = true // pin while starting
+
+	go func() {
+		defer func() {
+			s.mux.Lock()
+			ets.pinned = false
+			ets.lastActivity = time.Now()
+			s.mux.Unlock()
+		}()
+		s.startDependencyFor(ctx, ets.needs, containerShort(ct))
+		s.startContainerSync(ctx, ct)
+	}()
 
 	return ets, nil
 }
 
+// Stop all running containers pined with the configured label
 func (s *Core) StopAll() {
 	s.mux.Lock()
 	defer s.mux.Unlock()
@@ -95,17 +107,85 @@ func (s *Core) StopAll() {
 	}
 }
 
-func (s *Core) startContainer(ctx context.Context, ct *types.Container) {
+func (s *Core) startContainerSync(ctx context.Context, ct *types.Container) error {
+	if isRunning(ct) {
+		return nil
+	}
+
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
 	if err := s.client.ContainerStart(ctx, ct.ID, types.ContainerStartOptions{}); err != nil {
 		logrus.Warnf("Error starting container %s: %s", containerShort(ct), err)
+		return err
 	} else {
-		logrus.Infof("Starting container %s", containerShort(ct))
+		logrus.Infof("Started container %s", containerShort(ct))
+	}
+	return nil
+}
+
+func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContainer string) {
+	for _, dep := range needs {
+		providers, err := s.findContainersByDepProvider(ctx, dep)
+
+		if err != nil {
+			logrus.Errorf("Error finding dependency provider for %s: %v", dep, err)
+		} else if len(providers) == 0 {
+			logrus.Warnf("Unable to find any container that provides %s for %s", dep, forContainer)
+		} else {
+			for _, provider := range providers {
+				if !isRunning(&provider) {
+					logrus.Infof("Starting dependency for %s: %s", forContainer, containerShort(&provider))
+
+					s.startContainerSync(ctx, &provider)
+
+					delay, _ := labelOrDefaultDuration(&provider, "provides.delay", 2*time.Second)
+					logrus.Debugf("Delaying %s to start %s", delay.String(), dep)
+					time.Sleep(delay)
+				}
+			}
+		}
 	}
 }
 
+func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *ContainerState) {
+	// Look at our needs, and see if anything else needs them; if not, shut down
+
+	deps := make(map[string]bool) // dep -> needed
+	for _, dep := range cts.needs {
+		deps[dep] = false
+	}
+
+	for activeId, active := range s.active {
+		if activeId != cid { // ignore self
+			for _, need := range active.needs {
+				deps[need] = true
+			}
+		}
+	}
+
+	for dep, needed := range deps {
+		if !needed {
+			logrus.Infof("Stopping dependency %s...", dep)
+			containers, err := s.findContainersByDepProvider(ctx, dep)
+			if err != nil {
+				logrus.Errorf("Unable to find dependency provider containers for %s: %v", dep, err)
+			} else if len(containers) == 0 {
+				logrus.Warnf("Unable to find any containers for dependency %s", dep)
+			} else {
+				for _, ct := range containers {
+					if isRunning(&ct) {
+						logrus.Infof("Stopping %s...", containerShort(&ct))
+						go s.client.ContainerStop(ctx, ct.ID, container.StopOptions{})
+					}
+				}
+			}
+		}
+	}
+
+}
+
+// Ticker loop that will check internal state against docker state (Call Poll)
 func (s *Core) pollThread(rate time.Duration) {
 	ticker := time.NewTicker(rate)
 	defer ticker.Stop()
@@ -130,11 +210,11 @@ func (s *Core) Poll() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	s.checkForNewContainers(ctx)
-	s.watchForInactivity(ctx)
+	s.checkForNewContainersSync(ctx)
+	s.watchForInactivitySync(ctx)
 }
 
-func (s *Core) checkForNewContainers(ctx context.Context) {
+func (s *Core) checkForNewContainersSync(ctx context.Context) {
 	containers, err := s.findAllLazyloadContainers(ctx, false)
 	if err != nil {
 		logrus.Warnf("Error checking for new containers: %v", err)
@@ -150,9 +230,10 @@ func (s *Core) checkForNewContainers(ctx context.Context) {
 
 	// check for containers we think are running, but aren't (destroyed, error'd, stop'd via another process, etc)
 	for cid, cts := range s.active {
-		if _, ok := runningContainers[cid]; !ok {
+		if _, ok := runningContainers[cid]; !ok && !cts.pinned {
 			logrus.Infof("Discover container had stopped, removing %s", cts.name)
 			delete(s.active, cid)
+			s.stopDependenciesFor(ctx, cid, cts)
 		}
 	}
 
@@ -165,24 +246,34 @@ func (s *Core) checkForNewContainers(ctx context.Context) {
 	}
 }
 
-func (s *Core) watchForInactivity(ctx context.Context) {
+func (s *Core) watchForInactivitySync(ctx context.Context) {
 	for cid, cts := range s.active {
 		shouldStop, err := s.checkContainerForInactivity(ctx, cid, cts)
 		if err != nil {
 			logrus.Warnf("error checking container state for %s: %s", cts.name, err)
 		}
 		if shouldStop {
-			if err := s.client.ContainerStop(ctx, cid, container.StopOptions{}); err != nil {
-				logrus.Errorf("Error stopping container %s: %s", cts.name, err)
-			} else {
-				logrus.Infof("Stopped container %s", cts.name)
-				delete(s.active, cid)
-			}
+			s.stopContainerAndDependencies(ctx, cid, cts)
 		}
 	}
 }
 
+func (s *Core) stopContainerAndDependencies(ctx context.Context, cid string, cts *ContainerState) {
+	// First, stop the host container
+	if err := s.client.ContainerStop(ctx, cid, container.StopOptions{}); err != nil {
+		logrus.Errorf("Error stopping container %s: %s", cts.name, err)
+	} else {
+		logrus.Infof("Stopped container %s", cts.name)
+		delete(s.active, cid)
+		s.stopDependenciesFor(ctx, cid, cts)
+	}
+}
+
 func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *ContainerState) (shouldStop bool, retErr error) {
+	if ct.pinned {
+		return false, nil
+	}
+
 	statsStream, err := s.client.ContainerStatsOneShot(ctx, cid)
 	if err != nil {
 		return false, err
@@ -218,7 +309,7 @@ func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *
 
 func (s *Core) findContainersByDepProvider(ctx context.Context, name string) ([]types.Container, error) {
 	filters := filters.NewArgs()
-	filters.Add("label", config.SubLabel("providers")+"="+name)
+	filters.Add("label", config.SubLabel("provides")+"="+name)
 	return s.client.ContainerList(ctx, types.ContainerListOptions{
 		Filters: filters,
 		All:     true,
@@ -283,12 +374,20 @@ func (s *Core) QualifyingContainers(ctx context.Context) []ContainerWrapper {
 		return nil
 	}
 
-	ret := make([]ContainerWrapper, len(ct))
-	for i, c := range ct {
-		ret[i] = ContainerWrapper{c}
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].NameID() < ret[j].NameID()
+	return wrapContainers(ct...)
+}
+
+func (s *Core) ProviderContainers(ctx context.Context) []ContainerWrapper {
+	filters := filters.NewArgs()
+	filters.Add("label", config.SubLabel("provides"))
+
+	ct, err := s.client.ContainerList(ctx, types.ContainerListOptions{
+		Filters: filters,
+		All:     true,
 	})
-	return ret
+	if err != nil {
+		return nil
+	}
+
+	return wrapContainers(ct...)
 }

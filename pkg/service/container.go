@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"time"
 	"traefik-lazyload/pkg/config"
@@ -22,6 +23,7 @@ type ContainerState struct {
 	lastRecv, lastSend int64 // Last network traffic, used to see if idle
 	lastActivity       time.Time
 	started            time.Time
+	pinned             bool // Don't remove, even if not started
 }
 
 func newStateFromContainer(ct *types.Container) *ContainerState {
@@ -100,5 +102,16 @@ func (s *ContainerWrapper) ConfigLabels() map[string]string {
 			ret[k[len(matchString):]] = v
 		}
 	}
+	return ret
+}
+
+func wrapContainers(cts ...types.Container) []ContainerWrapper {
+	ret := make([]ContainerWrapper, len(cts))
+	for i, c := range cts {
+		ret[i] = ContainerWrapper{c}
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].NameID() < ret[j].NameID()
+	})
 	return ret
 }

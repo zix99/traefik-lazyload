@@ -15,7 +15,7 @@ const httpAssetPrefix = "/__llassets/"
 
 type SplashModel struct {
 	*service.ContainerState
-	Name string
+	Hostname string
 }
 
 var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("assets", config.Model.Splash)))
@@ -23,6 +23,7 @@ var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("asset
 type StatusPageModel struct {
 	Active         []*service.ContainerState
 	Qualifying     []service.ContainerWrapper
+	Providers      []service.ContainerWrapper
 	RuntimeMetrics string
 }
 

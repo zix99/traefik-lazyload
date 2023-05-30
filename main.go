@@ -97,7 +97,7 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusAccepted)
 		renderErr := splashTemplate.Execute(w, SplashModel{
-			Name:           host,
+			Hostname:       host,
 			ContainerState: sOpts,
 		})
 		if renderErr != nil {
@@ -114,6 +114,7 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 		statusPageTemplate.Execute(w, StatusPageModel{
 			Active:         core.ActiveContainers(),
 			Qualifying:     core.QualifyingContainers(r.Context()),
+			Providers:      core.ProviderContainers(r.Context()),
 			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),
 		})
 	default:

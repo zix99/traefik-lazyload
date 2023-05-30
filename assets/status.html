@@ -55,6 +55,29 @@
         {{end}}
     </table>
 
+    <h2>Provider Containers</h2>
+    <p>These are all containers that act as dependencies for other containers</p>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>State</th>
+            <th>Status</th>
+            <th>Config</th>
+        </tr>
+        {{range $val := .Providers}}
+            <tr>
+                <td>{{$val.NameID}}</td>
+                <td>{{$val.State}}</td>
+                <td><em>{{$val.Status}}</em></td>
+                <td>
+                    {{range $label, $lval := $val.ConfigLabels}}
+                        <span><strong>{{$label}}</strong>={{$lval}}</span> 
+                    {{end}}
+                </td>
+            </tr>
+        {{end}}
+    </table>
+
     <h2>Runtime</h2>
     <p>{{.RuntimeMetrics}}</p>
 </body>
