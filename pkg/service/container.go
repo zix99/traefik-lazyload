@@ -1,12 +1,9 @@
 package service
 
 import (
-	"sort"
-	"strings"
 	"time"
 	"traefik-lazyload/pkg/config"
-
-	"github.com/docker/docker/api/types"
+	"traefik-lazyload/pkg/containers"
 )
 
 type containerSettings struct {
@@ -26,21 +23,21 @@ type ContainerState struct {
 	pinned             bool // Don't remove, even if not started
 }
 
-func newStateFromContainer(ct *types.Container) *ContainerState {
+func newStateFromContainer(ct *containers.Wrapper) *ContainerState {
 	return &ContainerState{
-		name:              containerShort(ct),
+		name:              ct.NameID(),
 		containerSettings: extractContainerLabels(ct),
 		lastActivity:      time.Now(),
 		started:           time.Now(),
 	}
 }
 
-func extractContainerLabels(ct *types.Container) (target containerSettings) {
-	target.stopDelay, _ = labelOrDefaultDuration(ct, "stopdelay", config.Model.StopDelay)
-	target.waitForCode, _ = labelOrDefaultInt(ct, "waitforcode", 200)
-	target.waitForPath, _ = labelOrDefault(ct, "waitforpath", "/")
-	target.waitForMethod, _ = labelOrDefault(ct, "waitformethod", "HEAD")
-	target.needs, _ = labelOrDefaultArr(ct, "needs")
+func extractContainerLabels(ct *containers.Wrapper) (target containerSettings) {
+	target.stopDelay, _ = ct.ConfigDuration("stopdelay", config.Model.StopDelay)
+	target.waitForCode, _ = ct.ConfigInt("waitforcode", 200)
+	target.waitForPath, _ = ct.ConfigOrDefault("waitforpath", "/")
+	target.waitForMethod, _ = ct.ConfigOrDefault("waitformethod", "HEAD")
+	target.needs, _ = ct.ConfigCSV("needs", nil)
 	return
 }
 
@@ -52,7 +49,7 @@ func (s *ContainerState) LastActive() time.Time {
 	return s.lastActivity
 }
 
-func (s *ContainerState) LastActiveAge() string {
+func (s *ContainerState) LastActiveAge() string { // FIXME: Return duration (update UI)
 	return time.Since(s.lastActivity).Round(time.Second).String()
 }
 
@@ -68,7 +65,7 @@ func (s *ContainerState) Started() time.Time {
 	return s.started
 }
 
-func (s *containerSettings) StopDelay() string {
+func (s *containerSettings) StopDelay() string { // FIXME: Return duration (update UI)
 	return s.stopDelay.String()
 }
 
@@ -82,36 +79,4 @@ func (s *ContainerState) WaitForPath() string {
 
 func (s *ContainerState) WaitForMethod() string {
 	return s.waitForMethod
-}
-
-// Wrapper for container results that opaques and adds some methods to that data
-type ContainerWrapper struct {
-	types.Container
-}
-
-func (s *ContainerWrapper) NameID() string {
-	return containerShort(&s.Container)
-}
-
-func (s *ContainerWrapper) ConfigLabels() map[string]string {
-	var matchString = config.Model.LabelPrefix + "."
-
-	ret := make(map[string]string)
-	for k, v := range s.Labels {
-		if strings.HasPrefix(k, matchString) {
-			ret[k[len(matchString):]] = v
-		}
-	}
-	return ret
-}
-
-func wrapContainers(cts ...types.Container) []ContainerWrapper {
-	ret := make([]ContainerWrapper, len(cts))
-	for i, c := range cts {
-		ret[i] = ContainerWrapper{c}
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].NameID() < ret[j].NameID()
-	})
-	return ret
 }

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"runtime"
 	"traefik-lazyload/pkg/config"
+	"traefik-lazyload/pkg/containers"
 	"traefik-lazyload/pkg/service"
 
 	"github.com/docker/docker/client"
@@ -18,6 +19,7 @@ import (
 )
 
 var core *service.Core
+var discovery *containers.Discovery
 
 func mustCreateDockerClient() *client.Client {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -34,8 +36,11 @@ func main() {
 		logrus.Debug("Verbose is on")
 	}
 
+	dockerClient := mustCreateDockerClient()
+	discovery = containers.NewDiscovery(dockerClient)
+
 	var err error
-	core, err = service.New(mustCreateDockerClient(), config.Model.PollFreq)
+	core, err = service.New(dockerClient, discovery, config.Model.PollFreq)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -87,7 +92,7 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sOpts, err := core.StartHost(host); err != nil {
-		if errors.Is(err, service.ErrNotFound) {
+		if errors.Is(err, containers.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			io.WriteString(w, "not found")
 		} else {
@@ -111,10 +116,14 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 	case "/":
 		var stats runtime.MemStats
 		runtime.ReadMemStats(&stats)
+
+		qualifying, _ := discovery.QualifyingContainers(r.Context())
+		providers, _ := discovery.ProviderContainers(r.Context())
+
 		statusPageTemplate.Execute(w, StatusPageModel{
 			Active:         core.ActiveContainers(),
-			Qualifying:     core.QualifyingContainers(r.Context()),
-			Providers:      core.ProviderContainers(r.Context()),
+			Qualifying:     qualifying,
+			Providers:      providers,
 			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),
 		})
 	default:

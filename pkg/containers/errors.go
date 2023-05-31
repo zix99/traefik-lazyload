@@ -1,4 +1,4 @@
-package service
+package containers
 
 import "errors"
 

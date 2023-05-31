@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
-	"strings"
 	"sync"
 	"time"
-	"traefik-lazyload/pkg/config"
+	"traefik-lazyload/pkg/containers"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
 )
@@ -21,12 +19,13 @@ type Core struct {
 	mux  sync.Mutex
 	term chan bool
 
-	client *client.Client
+	client    *client.Client
+	discovery *containers.Discovery
 
 	active map[string]*ContainerState // cid -> state
 }
 
-func New(client *client.Client, pollRate time.Duration) (*Core, error) {
+func New(client *client.Client, discovery *containers.Discovery, pollRate time.Duration) (*Core, error) {
 	// Test client and report
 	if info, err := client.Info(context.Background()); err != nil {
 		return nil, err
@@ -36,9 +35,10 @@ func New(client *client.Client, pollRate time.Duration) (*Core, error) {
 
 	// Make core
 	ret := &Core{
-		client: client,
-		active: make(map[string]*ContainerState),
-		term:   make(chan bool),
+		client:    client,
+		discovery: discovery,
+		active:    make(map[string]*ContainerState),
+		term:      make(chan bool),
 	}
 
 	ret.Poll() // initial force-poll to update
@@ -61,7 +61,7 @@ func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 
 	ctx := context.Background()
 
-	ct, err := s.findContainerByHostname(ctx, hostname)
+	ct, err := s.discovery.FindContainerByHostname(ctx, hostname)
 	if err != nil {
 		logrus.Warnf("Unable to find container for host %s: %s", hostname, err)
 		return nil, err
@@ -85,7 +85,7 @@ func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 			ets.lastActivity = time.Now()
 			s.mux.Unlock()
 		}()
-		s.startDependencyFor(ctx, ets.needs, containerShort(ct))
+		s.startDependencyFor(ctx, ets.needs, ct.NameID())
 		s.startContainerSync(ctx, ct)
 	}()
 
@@ -107,26 +107,38 @@ func (s *Core) StopAll() {
 	}
 }
 
-func (s *Core) startContainerSync(ctx context.Context, ct *types.Container) error {
-	if isRunning(ct) {
-		return nil
-	}
-
+// Returns all actively managed containers
+func (s *Core) ActiveContainers() []*ContainerState {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
+	ret := make([]*ContainerState, 0, len(s.active))
+	for _, item := range s.active {
+		ret = append(ret, item)
+	}
+	sort.Slice(ret, func(i, j int) bool {
+		return ret[i].name < ret[j].name
+	})
+	return ret
+}
+
+func (s *Core) startContainerSync(ctx context.Context, ct *containers.Wrapper) error {
+	if ct.IsRunning() {
+		return nil
+	}
+
 	if err := s.client.ContainerStart(ctx, ct.ID, types.ContainerStartOptions{}); err != nil {
-		logrus.Warnf("Error starting container %s: %s", containerShort(ct), err)
+		logrus.Warnf("Error starting container %s: %s", ct.NameID(), err)
 		return err
 	} else {
-		logrus.Infof("Started container %s", containerShort(ct))
+		logrus.Infof("Started container %s", ct.NameID())
 	}
 	return nil
 }
 
 func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContainer string) {
 	for _, dep := range needs {
-		providers, err := s.findContainersByDepProvider(ctx, dep)
+		providers, err := s.discovery.FindDepProvider(ctx, dep)
 
 		if err != nil {
 			logrus.Errorf("Error finding dependency provider for %s: %v", dep, err)
@@ -134,12 +146,12 @@ func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContai
 			logrus.Warnf("Unable to find any container that provides %s for %s", dep, forContainer)
 		} else {
 			for _, provider := range providers {
-				if !isRunning(&provider) {
-					logrus.Infof("Starting dependency for %s: %s", forContainer, containerShort(&provider))
+				if !provider.IsRunning() {
+					logrus.Infof("Starting dependency for %s: %s", forContainer, provider.NameID())
 
 					s.startContainerSync(ctx, &provider)
 
-					delay, _ := labelOrDefaultDuration(&provider, "provides.delay", 2*time.Second)
+					delay, _ := provider.ConfigDuration("provides.delay", 2*time.Second)
 					logrus.Debugf("Delaying %s to start %s", delay.String(), dep)
 					time.Sleep(delay)
 				}
@@ -167,15 +179,15 @@ func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *Contain
 	for dep, needed := range deps {
 		if !needed {
 			logrus.Infof("Stopping dependency %s...", dep)
-			containers, err := s.findContainersByDepProvider(ctx, dep)
+			containers, err := s.discovery.FindDepProvider(ctx, dep)
 			if err != nil {
 				logrus.Errorf("Unable to find dependency provider containers for %s: %v", dep, err)
 			} else if len(containers) == 0 {
 				logrus.Warnf("Unable to find any containers for dependency %s", dep)
 			} else {
 				for _, ct := range containers {
-					if isRunning(&ct) {
-						logrus.Infof("Stopping %s...", containerShort(&ct))
+					if ct.IsRunning() {
+						logrus.Infof("Stopping %s...", ct.NameID())
 						go s.client.ContainerStop(ctx, ct.ID, container.StopOptions{})
 					}
 				}
@@ -215,16 +227,16 @@ func (s *Core) Poll() {
 }
 
 func (s *Core) checkForNewContainersSync(ctx context.Context) {
-	containers, err := s.findAllLazyloadContainers(ctx, false)
+	cts, err := s.discovery.FindAllLazyload(ctx, false)
 	if err != nil {
 		logrus.Warnf("Error checking for new containers: %v", err)
 		return
 	}
 
-	runningContainers := make(map[string]*types.Container)
-	for i, ct := range containers {
-		if isRunning(&ct) {
-			runningContainers[ct.ID] = &containers[i]
+	runningContainers := make(map[string]*containers.Wrapper)
+	for i, ct := range cts {
+		if ct.IsRunning() {
+			runningContainers[ct.ID] = &cts[i]
 		}
 	}
 
@@ -240,7 +252,7 @@ func (s *Core) checkForNewContainersSync(ctx context.Context) {
 	// now, look for containers that are running, but aren't in our active inventory
 	for _, ct := range runningContainers {
 		if _, ok := s.active[ct.ID]; !ok {
-			logrus.Infof("Discovered running container %s", containerShort(ct))
+			logrus.Infof("Discovered running container %s", ct.NameID())
 			s.active[ct.ID] = newStateFromContainer(ct)
 		}
 	}
@@ -305,89 +317,4 @@ func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *
 	}
 
 	return false, nil
-}
-
-func (s *Core) findContainersByDepProvider(ctx context.Context, name string) ([]types.Container, error) {
-	filters := filters.NewArgs()
-	filters.Add("label", config.SubLabel("provides")+"="+name)
-	return s.client.ContainerList(ctx, types.ContainerListOptions{
-		Filters: filters,
-		All:     true,
-	})
-}
-
-func (s *Core) findContainerByHostname(ctx context.Context, hostname string) (*types.Container, error) {
-	containers, err := s.findAllLazyloadContainers(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, c := range containers {
-		if hostStr, ok := labelOrDefault(&c, "hosts", ""); ok {
-			hosts := strings.Split(hostStr, ",")
-			if strSliceContains(hosts, hostname) {
-				return &c, nil
-			}
-		} else {
-			// If not defined explicitely, infer from traefik route
-			for k, v := range c.Labels {
-				if strings.Contains(k, "traefik.http.routers.") && strings.Contains(v, hostname) { // TODO: More complex
-					return &c, nil
-				}
-			}
-		}
-	}
-
-	return nil, ErrNotFound
-}
-
-// Finds all containers on node that are labeled with lazyloader config
-func (s *Core) findAllLazyloadContainers(ctx context.Context, includeStopped bool) ([]types.Container, error) {
-	filters := filters.NewArgs()
-	filters.Add("label", config.Model.LabelPrefix)
-
-	return s.client.ContainerList(ctx, types.ContainerListOptions{
-		All:     includeStopped,
-		Filters: filters,
-	})
-}
-
-// Returns all actively managed containers
-func (s *Core) ActiveContainers() []*ContainerState {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
-	ret := make([]*ContainerState, 0, len(s.active))
-	for _, item := range s.active {
-		ret = append(ret, item)
-	}
-	sort.Slice(ret, func(i, j int) bool {
-		return ret[i].name < ret[j].name
-	})
-	return ret
-}
-
-// Return all containers that qualify to be load-managed (eg. have the tag)
-func (s *Core) QualifyingContainers(ctx context.Context) []ContainerWrapper {
-	ct, err := s.findAllLazyloadContainers(ctx, true)
-	if err != nil {
-		return nil
-	}
-
-	return wrapContainers(ct...)
-}
-
-func (s *Core) ProviderContainers(ctx context.Context) []ContainerWrapper {
-	filters := filters.NewArgs()
-	filters.Add("label", config.SubLabel("provides"))
-
-	ct, err := s.client.ContainerList(ctx, types.ContainerListOptions{
-		Filters: filters,
-		All:     true,
-	})
-	if err != nil {
-		return nil
-	}
-
-	return wrapContainers(ct...)
 }

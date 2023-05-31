@@ -5,6 +5,7 @@ import (
 	"path"
 	"text/template"
 	"traefik-lazyload/pkg/config"
+	"traefik-lazyload/pkg/containers"
 	"traefik-lazyload/pkg/service"
 )
 
@@ -22,8 +23,8 @@ var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("asset
 
 type StatusPageModel struct {
 	Active         []*service.ContainerState
-	Qualifying     []service.ContainerWrapper
-	Providers      []service.ContainerWrapper
+	Qualifying     []containers.Wrapper
+	Providers      []containers.Wrapper
 	RuntimeMetrics string
 }
 
