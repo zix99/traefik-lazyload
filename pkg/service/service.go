@@ -216,9 +216,6 @@ func (s *Core) pollThread(rate time.Duration) {
 // stopping idle containers
 // Will normally happen in the background with the pollThread
 func (s *Core) Poll() {
-	s.mux.Lock()
-	defer s.mux.Unlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -240,6 +237,10 @@ func (s *Core) checkForNewContainersSync(ctx context.Context) {
 		}
 	}
 
+	// Lock
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	// check for containers we think are running, but aren't (destroyed, error'd, stop'd via another process, etc)
 	for cid, cts := range s.active {
 		if _, ok := runningContainers[cid]; !ok && !cts.pinned {
@@ -259,6 +260,9 @@ func (s *Core) checkForNewContainersSync(ctx context.Context) {
 }
 
 func (s *Core) watchForInactivitySync(ctx context.Context) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+
 	for cid, cts := range s.active {
 		shouldStop, err := s.checkContainerForInactivity(ctx, cid, cts)
 		if err != nil {
