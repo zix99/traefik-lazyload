@@ -32,7 +32,7 @@
                 method: "{{.WaitForMethod}}",
             });
             console.log(`Got ${response.status}`);
-            return response.status === {{.WaitForCode}};
+            return [{{.WaitForCode}}].includes(response.status);
         }
         setInterval(async () => {
             if (await testForOk("{{.WaitForPath}}")) {

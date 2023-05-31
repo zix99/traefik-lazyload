@@ -105,11 +105,13 @@ labelprefix: lazyloader
 
 * `lazyloader=true` -- (Required) Add to containers that should be managed
 * `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container
-* `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user
+* `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user. Can be comma-separated list
 * `lazyloader.waitforpath=/`  -- Checks this path downstream to check for the process being ready, using the `waitforcode`
+* `lazyloader.waitformethod=HEAD` -- Method to check against the downstream server
 * `lazyloader.hosts=a.com,b.net,etc` -- Set specific hostnames that will trigger. By default, will look for traefik router
 
 ### Dependencies
+
 * `lazyloader.needs=a,b,c` -- List of dependencies a container needs (will be started before starting the container)
 * `lazyloader.provides=a` -- What dependency name a container provides (Not necessarily a `lazyloader` container)
 * `lazyloader.provides.delay=5s` -- Delay starting other containers for this duration
