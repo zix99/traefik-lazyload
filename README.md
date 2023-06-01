@@ -112,13 +112,9 @@ labelprefix: lazyloader
 
 ### Dependencies
 
-* `lazyloader.needs=a,b,c` -- List of dependencies a container needs (will be started before starting the container)
+* `lazyloader.needs=a,b,c` -- List of dependencies a container needs (will be started before starting the container). Can only be specified on a `lazyloader=true` container
 * `lazyloader.provides=a` -- What dependency name a container provides (Not necessarily a `lazyloader` container)
 * `lazyloader.provides.delay=5s` -- Delay starting other containers for this duration
-
-# Features
-
-- [ ] Dependencies & groups (eg. shut down DB if all dependent apps are down)
 
 # License
 

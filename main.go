@@ -18,8 +18,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var core *service.Core
-var discovery *containers.Discovery
+type controller struct {
+	core      *service.Core
+	discovery *containers.Discovery
+}
 
 func mustCreateDockerClient() *client.Client {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -37,10 +39,10 @@ func main() {
 	}
 
 	dockerClient := mustCreateDockerClient()
-	discovery = containers.NewDiscovery(dockerClient)
+	discovery := containers.NewDiscovery(dockerClient)
 
 	var err error
-	core, err = service.New(dockerClient, discovery, config.Model.PollFreq)
+	core, err := service.New(dockerClient, discovery, config.Model.PollFreq)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -50,11 +52,16 @@ func main() {
 		core.StopAll()
 	}
 
+	controller := controller{
+		core,
+		discovery,
+	}
+
 	// Set up http server
 	subFs, _ := fs.Sub(httpAssets, "assets")
 	router := http.NewServeMux()
 	router.Handle(httpAssetPrefix, http.StripPrefix(httpAssetPrefix, http.FileServer(http.FS(subFs))))
-	router.HandleFunc("/", ContainerHandler)
+	router.HandleFunc("/", controller.ContainerHandler)
 
 	srv := &http.Server{
 		Addr:    config.Model.Listen,
@@ -79,7 +86,7 @@ func main() {
 	}
 }
 
-func ContainerHandler(w http.ResponseWriter, r *http.Request) {
+func (s *controller) ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if host == "" {
 		w.WriteHeader(http.StatusNotFound)
@@ -87,11 +94,11 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if host == config.Model.StatusHost && config.Model.StatusHost != "" {
-		StatusHandler(w, r)
+		s.StatusHandler(w, r)
 		return
 	}
 
-	if sOpts, err := core.StartHost(host); err != nil {
+	if sOpts, err := s.core.StartHost(host); err != nil {
 		if errors.Is(err, containers.ErrNotFound) {
 			w.WriteHeader(http.StatusNotFound)
 			io.WriteString(w, "not found")
@@ -111,17 +118,17 @@ func ContainerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func StatusHandler(w http.ResponseWriter, r *http.Request) {
+func (s *controller) StatusHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
 		var stats runtime.MemStats
 		runtime.ReadMemStats(&stats)
 
-		qualifying, _ := discovery.QualifyingContainers(r.Context())
-		providers, _ := discovery.ProviderContainers(r.Context())
+		qualifying, _ := s.discovery.QualifyingContainers(r.Context())
+		providers, _ := s.discovery.ProviderContainers(r.Context())
 
 		statusPageTemplate.Execute(w, StatusPageModel{
-			Active:         core.ActiveContainers(),
+			Active:         s.core.ActiveContainers(),
 			Qualifying:     qualifying,
 			Providers:      providers,
 			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),

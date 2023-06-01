@@ -19,6 +19,7 @@ type ConfigModel struct {
 
 	StopDelay time.Duration // Amount of time to wait before stopping a container
 	PollFreq  time.Duration // How often to check for changes
+	Timeout   time.Duration // Default operation timeout (eg. starting/stopping a container)
 
 	Verbose bool // Debug-level logging
 

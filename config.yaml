@@ -17,6 +17,9 @@ splash: splash.html
 stopdelay: 5m # How long to wait before stopping container
 pollfreq: 10s # How often to check
 
+# Default operation timeout (eg. starting and stopping a container)
+timeout: 30s
+
 # This will be the label-prefix to look at settings on a container
 # usually won't need to change (only if running multiple instances)
 labelprefix: lazyloader

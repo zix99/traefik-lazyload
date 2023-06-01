@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"traefik-lazyload/pkg/config"
 	"traefik-lazyload/pkg/containers"
 
 	"github.com/docker/docker/api/types"
@@ -59,16 +60,18 @@ func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), config.Model.Timeout)
 
 	ct, err := s.discovery.FindContainerByHostname(ctx, hostname)
 	if err != nil {
 		logrus.Warnf("Unable to find container for host %s: %s", hostname, err)
+		cancel()
 		return nil, err
 	}
 
 	if ets, exists := s.active[ct.ID]; exists {
 		logrus.Debugf("Asked to start host, but we already think it's started: %s", ets.name)
+		cancel()
 		return ets, nil
 	}
 
@@ -80,6 +83,7 @@ func (s *Core) StartHost(hostname string) (*ContainerState, error) {
 
 	go func() {
 		defer func() {
+			cancel()
 			s.mux.Lock()
 			ets.pinned = false
 			ets.lastActivity = time.Now()
@@ -102,8 +106,11 @@ func (s *Core) StopAll() {
 	logrus.Info("Stopping all containers...")
 	for cid, ct := range s.active {
 		logrus.Infof("Stopping %s...", ct.name)
-		s.client.ContainerStop(ctx, cid, container.StopOptions{})
-		delete(s.active, cid)
+		if err := s.client.ContainerStop(ctx, cid, container.StopOptions{}); err != nil {
+			logrus.Warnf("Error stopping %s: %v", ct.name, err)
+		} else {
+			delete(s.active, cid)
+		}
 	}
 }
 
@@ -136,20 +143,24 @@ func (s *Core) startContainerSync(ctx context.Context, ct *containers.Wrapper) e
 	return nil
 }
 
-func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContainer string) {
+func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContainer string) error {
 	for _, dep := range needs {
 		providers, err := s.discovery.FindDepProvider(ctx, dep)
 
 		if err != nil {
 			logrus.Errorf("Error finding dependency provider for %s: %v", dep, err)
+			return err
 		} else if len(providers) == 0 {
 			logrus.Warnf("Unable to find any container that provides %s for %s", dep, forContainer)
+			return ErrProviderNotFound
 		} else {
 			for _, provider := range providers {
 				if !provider.IsRunning() {
 					logrus.Infof("Starting dependency for %s: %s", forContainer, provider.NameID())
 
-					s.startContainerSync(ctx, &provider)
+					if err := s.startContainerSync(ctx, &provider); err != nil {
+						return err
+					}
 
 					delay, _ := provider.ConfigDuration("provides.delay", 2*time.Second)
 					logrus.Debugf("Delaying %s to start %s", delay.String(), dep)
@@ -158,10 +169,13 @@ func (s *Core) startDependencyFor(ctx context.Context, needs []string, forContai
 			}
 		}
 	}
+
+	return nil
 }
 
-func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *ContainerState) {
+func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *ContainerState) []error {
 	// Look at our needs, and see if anything else needs them; if not, shut down
+	var errs []error
 
 	deps := make(map[string]bool) // dep -> needed
 	for _, dep := range cts.needs {
@@ -182,6 +196,7 @@ func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *Contain
 			containers, err := s.discovery.FindDepProvider(ctx, dep)
 			if err != nil {
 				logrus.Errorf("Unable to find dependency provider containers for %s: %v", dep, err)
+				errs = append(errs, err)
 			} else if len(containers) == 0 {
 				logrus.Warnf("Unable to find any containers for dependency %s", dep)
 			} else {
@@ -195,6 +210,7 @@ func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *Contain
 		}
 	}
 
+	return errs
 }
 
 // Ticker loop that will check internal state against docker state (Call Poll)
@@ -216,7 +232,7 @@ func (s *Core) pollThread(rate time.Duration) {
 // stopping idle containers
 // Will normally happen in the background with the pollThread
 func (s *Core) Poll() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), config.Model.Timeout)
 	defer cancel()
 
 	s.checkForNewContainersSync(ctx)
