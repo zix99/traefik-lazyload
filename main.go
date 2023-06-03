@@ -33,6 +33,8 @@ func mustCreateDockerClient() *client.Client {
 }
 
 func main() {
+	config.Load()
+
 	if config.Model.Verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 		logrus.Debug("Verbose is on")

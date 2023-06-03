@@ -6,10 +6,10 @@ via traefik.
 ## How it Works
 
 It works by acting as the fallback-route for the containers. For instance, if you have
-`example.com` as a container you want to lazy-load, you would add the container, as well
-as this lazyloader that would act as a lower-priority router for the same domain. If the
+`example.com` as a container you want to lazy-load, you add the container, as well
+as this lazyloader that would act as a lower-priority router for the same route. If the
 host is accessed, the lazyloader will work to boot up the container and redirect the user
-as soon as it's up.
+as soon as it's responsive.
 
 It then monitors the container's network interface. If the network is idle for X minutes, it
 will stop the container.
@@ -21,7 +21,7 @@ will stop the container.
 version: '3.5'
 
 services:
-  # Example traefik proxy
+  # Example traefik proxy (Don't need if you already have something set up!)
   reverse-proxy:
     image: traefik:v2.4
     command:
@@ -73,7 +73,7 @@ You can run `docker-compose up` on the above for a quick-start. You will need to
 
 ## Config
 
-Configuration uses [viper]() and can be specified by either overwriting the `config.yaml` file or
+Configuration uses [viper](https://github.com/spf13/viper) and can be specified by either overwriting the `config.yaml` file or
 via environment variables with the `TLL_` prefix (Traefik lazy loader)
 
 ```yaml
@@ -103,6 +103,8 @@ labelprefix: lazyloader
 
 ## Labels
 
+Use these on containers you want to be lazy-loaded.
+
 * `lazyloader=true` -- (Required) Add to containers that should be managed
 * `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container
 * `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user. Can be comma-separated list
@@ -118,4 +120,17 @@ labelprefix: lazyloader
 
 # License
 
-GPLv3
+Copyright (C) 2023  Christopher LaPointe
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.

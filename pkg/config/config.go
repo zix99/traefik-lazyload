@@ -28,7 +28,7 @@ type ConfigModel struct {
 
 var Model *ConfigModel = new(ConfigModel)
 
-func init() {
+func Load() {
 	viper.AddConfigPath(".")
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
