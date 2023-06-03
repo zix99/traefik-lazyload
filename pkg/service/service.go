@@ -20,7 +20,7 @@ type Core struct {
 	mux  sync.Mutex
 	term chan bool
 
-	client    *client.Client
+	client    containers.Host
 	discovery *containers.Discovery
 
 	active map[string]*ContainerState // cid -> state

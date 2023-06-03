@@ -7,14 +7,13 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 )
 
 type Discovery struct {
-	client *client.Client
+	client Host
 }
 
-func NewDiscovery(client *client.Client) *Discovery {
+func NewDiscovery(client Host) *Discovery {
 	return &Discovery{client}
 }
 
