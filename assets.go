@@ -19,8 +19,6 @@ type SplashModel struct {
 	Hostname string
 }
 
-var splashTemplate = template.Must(template.ParseFS(httpAssets, path.Join("assets", config.Model.Splash)))
-
 type StatusPageModel struct {
 	Active         []*service.ContainerState
 	Qualifying     []containers.Wrapper
@@ -28,4 +26,14 @@ type StatusPageModel struct {
 	RuntimeMetrics string
 }
 
-var statusPageTemplate = template.Must(template.ParseFS(httpAssets, "assets/status.html"))
+type assetTemplates struct {
+	splash *template.Template
+	status *template.Template
+}
+
+func LoadTemplates() *assetTemplates {
+	return &assetTemplates{
+		splash: template.Must(template.ParseFS(httpAssets, path.Join("assets", config.Model.Splash))),
+		status: template.Must(template.ParseFS(httpAssets, "assets/status.html")),
+	}
+}

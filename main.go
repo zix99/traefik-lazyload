@@ -19,6 +19,7 @@ import (
 )
 
 type controller struct {
+	assets    assetTemplates
 	core      *service.Core
 	discovery *containers.Discovery
 }
@@ -55,6 +56,7 @@ func main() {
 	}
 
 	controller := controller{
+		*LoadTemplates(),
 		core,
 		discovery,
 	}
@@ -110,7 +112,7 @@ func (s *controller) ContainerHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		w.WriteHeader(http.StatusAccepted)
-		renderErr := splashTemplate.Execute(w, SplashModel{
+		renderErr := s.assets.splash.Execute(w, SplashModel{
 			Hostname:       host,
 			ContainerState: sOpts,
 		})
@@ -129,7 +131,7 @@ func (s *controller) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		qualifying, _ := s.discovery.QualifyingContainers(r.Context())
 		providers, _ := s.discovery.ProviderContainers(r.Context())
 
-		statusPageTemplate.Execute(w, StatusPageModel{
+		s.assets.status.Execute(w, StatusPageModel{
 			Active:         s.core.ActiveContainers(),
 			Qualifying:     qualifying,
 			Providers:      providers,

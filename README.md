@@ -40,7 +40,8 @@ services:
 
   # Lazy-loader manager
   lazyloader:
-    build: .
+    #build: . # Uncomment to build from source
+    image: ghcr.io/zix99/traefik-lazyload:1
     labels:
       - traefik.enable=true
       - "traefik.http.routers.lazyload.priority=-100" # Lower router priority. Would only be hit if the app isn't running
