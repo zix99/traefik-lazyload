@@ -203,7 +203,9 @@ func (s *Core) stopDependenciesFor(ctx context.Context, cid string, cts *Contain
 				for _, ct := range containers {
 					if ct.IsRunning() {
 						logrus.Infof("Stopping %s...", ct.NameID())
-						go s.client.ContainerStop(ctx, ct.ID, container.StopOptions{})
+						if err := s.client.ContainerStop(ctx, ct.ID, container.StopOptions{}); err != nil {
+							logrus.Warnf("Error stopping %s: %v", ct.NameID(), err)
+						}
 					}
 				}
 			}
