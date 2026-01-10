@@ -131,12 +131,16 @@ func (s *controller) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		qualifying, _ := s.discovery.QualifyingContainers(r.Context())
 		providers, _ := s.discovery.ProviderContainers(r.Context())
 
-		s.assets.status.Execute(w, StatusPageModel{
+		err := s.assets.status.Execute(w, StatusPageModel{
 			Active:         s.core.ActiveContainers(),
 			Qualifying:     qualifying,
 			Providers:      providers,
 			RuntimeMetrics: fmt.Sprintf("Heap=%d, InUse=%d, Total=%d, Sys=%d, NumGC=%d", stats.HeapAlloc, stats.HeapInuse, stats.TotalAlloc, stats.Sys, stats.NumGC),
 		})
+		if err != nil {
+			logrus.Error(err)
+		}
+
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		io.WriteString(w, "Status page not found")
