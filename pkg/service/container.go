@@ -8,6 +8,7 @@ import (
 
 type containerSettings struct {
 	stopDelay     time.Duration
+	watchNetworks int
 	waitForCode   int
 	waitForPath   string
 	waitForMethod string
@@ -17,16 +18,17 @@ type containerSettings struct {
 type ContainerState struct {
 	name string
 	containerSettings
-	lastRecv, lastSend int64 // Last network traffic, used to see if idle
-	lastActivity       time.Time
-	started            time.Time
-	pinned             bool // Don't remove, even if not started
+	lastNetState *netState
+	lastActivity time.Time
+	started      time.Time
+	pinned       bool // Don't remove, even if not started
 }
 
 func newStateFromContainer(ct *containers.Wrapper) *ContainerState {
 	return &ContainerState{
 		name:              ct.NameID(),
 		containerSettings: extractContainerLabels(ct),
+		lastNetState:      newNetState(),
 		lastActivity:      time.Now(),
 		started:           time.Now(),
 	}
@@ -34,6 +36,7 @@ func newStateFromContainer(ct *containers.Wrapper) *ContainerState {
 
 func extractContainerLabels(ct *containers.Wrapper) (target containerSettings) {
 	target.stopDelay, _ = ct.ConfigDuration("stopdelay", config.Model.StopDelay)
+	target.watchNetworks, _ = ct.ConfigInt("watchnets", 1)
 	target.waitForCode, _ = ct.ConfigInt("waitforcode", 200)
 	target.waitForPath, _ = ct.ConfigOrDefault("waitforpath", "/")
 	target.waitForMethod, _ = ct.ConfigOrDefault("waitformethod", "HEAD")
@@ -53,12 +56,16 @@ func (s *ContainerState) LastActiveAge() string { // FIXME: Return duration (upd
 	return time.Since(s.lastActivity).Round(time.Second).String()
 }
 
-func (s *ContainerState) Rx() int64 {
-	return s.lastRecv
+func (s *ContainerState) WatchNetworks() int {
+	return s.watchNetworks
 }
 
-func (s *ContainerState) Tx() int64 {
-	return s.lastSend
+func (s *ContainerState) Rx() uint64 {
+	return s.lastNetState.Rx()
+}
+
+func (s *ContainerState) Tx() uint64 {
+	return s.lastNetState.Tx()
 }
 
 func (s *ContainerState) Started() time.Time {

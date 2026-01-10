@@ -108,6 +108,7 @@ Use these on containers you want to be lazy-loaded.
 
 * `lazyloader=true` -- (Required) Add to containers that should be managed
 * `lazyloader.stopdelay=5m` -- Amount of time to wait for idle network traffick before stopping a container
+* `lazyloader.watchnets=1` -- Number of networks that have to change to count container as active (default: `1`). Or `all`
 * `lazyloader.waitforcode=200` -- Waits for this HTTP result from downstream before redirecting user. Can be comma-separated list
 * `lazyloader.waitforpath=/`  -- Checks this path downstream to check for the process being ready, using the `waitforcode`
 * `lazyloader.waitformethod=HEAD` -- Method to check against the downstream server

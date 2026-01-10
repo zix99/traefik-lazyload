@@ -324,10 +324,8 @@ func (s *Core) checkContainerForInactivity(ctx context.Context, cid string, ct *
 	}
 
 	// check for network activity
-	rx, tx := sumNetworkBytes(stats.Networks)
-	if rx > ct.lastRecv || tx > ct.lastSend {
-		ct.lastRecv = rx
-		ct.lastSend = tx
+	netChanged := ct.lastNetState.UpdateStats(stats.Networks)
+	if netChanged >= ct.WatchNetworks() {
 		ct.lastActivity = time.Now()
 		return false, nil
 	}
